@@ -1,10 +1,15 @@
-import RPi.GPIO as GPIO          
+import RPi.GPIO as GPIO   
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from rclpy.qos import QoSProfile
+from rclpy.qos import DurabilityPolicy
+from rclpy.qos import HistoryPolicy
+from rclpy.qos import ReliabilityPolicy
+
+
 from time import sleep
 
-in1 = 24
-in2 = 23
-en = 25
-temp1=1
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(in1,GPIO.OUT)
@@ -14,69 +19,81 @@ GPIO.output(in1,GPIO.LOW)
 GPIO.output(in2,GPIO.LOW)
 p=GPIO.PWM(en,1000)
 p.start(25)
-print("\n")
-print("The default speed & direction of motor is LOW & Forward.....")
-print("r-run s-stop f-forward b-backward l-low m-medium h-high e-exit")
-print("\n")    
 
-while(1):
+class Motor_Driver(Node):
+    def __init__(self):
+        super().__init__("motor_driver")
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,  
+            durability=DurabilityPolicy.VOLATILE,   
+            history=HistoryPolicy.KEEP_LAST,        
+            depth=10                                
+        )
+        self.subscription = self.create_subscription(String, "motor
+        self.state = "Stopped"
 
-    x=raw_input()
-    
-    if x=='r':
-        print("run")
-        if(temp1==1):
-         GPIO.output(in1,GPIO.HIGH)
-         GPIO.output(in2,GPIO.LOW)
-         print("forward")
-         x='z'
-        else:
-         GPIO.output(in1,GPIO.LOW)
-         GPIO.output(in2,GPIO.HIGH)
-         print("backward")
-         x='z'
+    def listener_callback(self, msg):
+        self.state = msg.data
 
-
-    elif x=='s':
-        print("stop")
-        GPIO.output(in1,GPIO.LOW)
-        GPIO.output(in2,GPIO.LOW)
-        x='z'
-
-    elif x=='f':
-        print("forward")
-        GPIO.output(in1,GPIO.HIGH)
-        GPIO.output(in2,GPIO.LOW)
+    def test(self):
+        in1 = 24
+        in2 = 23
+        en = 25
         temp1=1
-        x='z'
-
-    elif x=='b':
-        print("backward")
-        GPIO.output(in1,GPIO.LOW)
-        GPIO.output(in2,GPIO.HIGH)
-        temp1=0
-        x='z'
-
-    elif x=='l':
-        print("low")
-        p.ChangeDutyCycle(25)
-        x='z'
-
-    elif x=='m':
-        print("medium")
-        p.ChangeDutyCycle(50)
-        x='z'
-
-    elif x=='h':
-        print("high")
-        p.ChangeDutyCycle(75)
-        x='z'
+        while rclpy.ok():
+            while True:
+                if self.state == "r":
+                    print("run")
+                    if temp1 == 1:
+                        GPIO.output(in1,GPIO.HIGH)
+                        GPIO.output(in2,GPIO.LOW)
+                        print("forward")
+                    else:
+                        GPIO.output(in1,GPIO.LOW)
+                        GPIO.output(in2,GPIO.HIGH)
+                        print("backward")
+                elif self.state == "s":
+                    print("stop")
+                    GPIO.output(in1,GPIO.LOW)
+                    GPIO.output(in2,GPIO.LOW)
+                elif self.state == "f":
+                    print("forward")
+                    GPIO.output(in1,GPIO.HIGH)
+                    GPIO.output(in2,GPIO.LOW)
+                    temp1=1
+                elif self.state == "b":
+                    print("backward")
+                    GPIO.output(in1,GPIO.LOW)
+                    GPIO.output(in2,GPIO.HIGH)
+                    temp1=0
+                elif self.state == "l":
+                    print("low")
+                    p.ChangeDutyCycle(25)
+                elif self.state == "m":
+                    print("medium")
+                    p.ChangeDutyCycle(50)
+                elif self.state == "h":
+                    print("high")
+                    p.ChangeDutyCycle(75)
+                elif self.state == "e":
+                    GPIO.cleanup()
+                    break
+                else:
+                    print("<<<  wrong data  >>>")
+                break
      
-    
-    elif x=='e':
-        GPIO.cleanup()
-        break
-    
-    else:
-        print("<<<  wrong data  >>>")
-        print("please enter the defined data to continue.....")
+            rclpy.spin_once(self)
+
+            
+def main(args=None):
+    rclpy.init(args=args)
+    motor_driver = Motor_Driver()
+    motor_driver.test()
+    #rclpy.spin(motor_driver)
+    motor_driver.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+
