@@ -9,7 +9,7 @@ import adafruit_amg88xx
 class ThermalPublisher(Node):
     def __init__(self):
         super().__init__('thermal_publisher')
-        self.publisher_mean = self.create_publisher(Float32, 'mean_temperature', 10)
+        self.publisher_middle_mean = self.create_publisher(Float32, 'middle_cells_mean_temperature', 10)
 
         # Initialize I2C and sensor
         i2c = busio.I2C(board.SCL, board.SDA)
@@ -18,19 +18,23 @@ class ThermalPublisher(Node):
         self.timer = self.create_timer(1.0, self.publish_data)
 
     def publish_data(self):
-        msg_mean = Float32()
+        msg_middle_mean = Float32()
 
-        # Collect all temperatures to calculate mean
-        temp_values = [temp for row in self.amg.pixels for temp in row]
+        # Extract the 9 middle cells (3x3 grid)
+        middle_cells = [
+            self.amg.pixels[row][col]
+            for row in range(2, 5)  # Rows 3, 4, 5 (index 2, 3, 4)
+            for col in range(2, 5)  # Columns 3, 4, 5 (index 2, 3, 4)
+        ]
 
-        # Compute mean temperature
-        mean_temp = sum(temp_values) / len(temp_values) if temp_values else 0.0
-        msg_mean.data = mean_temp
+        # Compute the mean temperature of the 9 cells
+        middle_mean_temp = sum(middle_cells) / len(middle_cells) if middle_cells else 0.0
+        msg_middle_mean.data = middle_mean_temp
 
-        # Publish the mean temperature
-        self.publisher_mean.publish(msg_mean)
+        # Publish the mean temperature of the middle 9 cells
+        self.publisher_middle_mean.publish(msg_middle_mean)
 
-        self.get_logger().info(f'Published mean temperature: {msg_mean.data}')
+        self.get_logger().info(f'Published mean temperature of middle cells: {msg_middle_mean.data}')
 
 
 def main(args=None):
