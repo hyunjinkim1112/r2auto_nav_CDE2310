@@ -10,13 +10,23 @@ from rclpy.qos import ReliabilityPolicy
 
 from time import sleep
 
+# Define GPIO pin numbers
+in1 = 24
+in2 = 23
+in3 = 27
+in4 = 22
+en = 25
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(in1,GPIO.OUT)
 GPIO.setup(in2,GPIO.OUT)
+GPIO.setup(in3,GPIO.OUT)
+GPIO.setup(in4,GPIO.OUT)
 GPIO.setup(en,GPIO.OUT)
 GPIO.output(in1,GPIO.LOW)
 GPIO.output(in2,GPIO.LOW)
+GPIO.output(in3,GPIO.LOW)
+GPIO.output(in4,GPIO.LOW)
 p=GPIO.PWM(en,1000)
 p.start(25)
 
@@ -29,16 +39,19 @@ class Motor_Driver(Node):
             history=HistoryPolicy.KEEP_LAST,        
             depth=10                                
         )
-        self.subscription = self.create_subscription(String, "motor
+        self.subscription = self.create_subscription(String, "motor_driver")
         self.state = "Stopped"
 
     def listener_callback(self, msg):
         self.state = msg.data
 
     def test(self):
-        in1 = 24
-        in2 = 23
-        en = 25
+        self.subscription = self.create_subscription(
+            String,
+            "motor_driver",
+            self.listener_callback,
+            10
+        )
         temp1=1
         while rclpy.ok():
             while True:
@@ -47,24 +60,34 @@ class Motor_Driver(Node):
                     if temp1 == 1:
                         GPIO.output(in1,GPIO.HIGH)
                         GPIO.output(in2,GPIO.LOW)
+                        GPIO.output(in3,GPIO.HIGH)
+                        GPIO.output(in4,GPIO.LOW)
                         print("forward")
                     else:
                         GPIO.output(in1,GPIO.LOW)
                         GPIO.output(in2,GPIO.HIGH)
+                        GPIO.output(in3,GPIO.LOW)
+                        GPIO.output(in4,GPIO.HIGH)
                         print("backward")
                 elif self.state == "s":
                     print("stop")
                     GPIO.output(in1,GPIO.LOW)
                     GPIO.output(in2,GPIO.LOW)
+                    GPIO.output(in3,GPIO.LOW)
+                    GPIO.output(in4,GPIO.LOW)
                 elif self.state == "f":
                     print("forward")
                     GPIO.output(in1,GPIO.HIGH)
                     GPIO.output(in2,GPIO.LOW)
+                    GPIO.output(in3,GPIO.LOW)
+                    GPIO.output(in4,GPIO.LOW)
                     temp1=1
                 elif self.state == "b":
                     print("backward")
                     GPIO.output(in1,GPIO.LOW)
                     GPIO.output(in2,GPIO.HIGH)
+                    GPIO.output(in3,GPIO.LOW)
+                    GPIO.output(in4,GPIO.LOW)
                     temp1=0
                 elif self.state == "l":
                     print("low")
