@@ -13,6 +13,7 @@ in3 = 22
 in4 = 27
 en1 = 25
 en2 = 17
+servo = 18
 
 # GPIO setup
 GPIO.setwarnings(False)
@@ -23,6 +24,7 @@ GPIO.setup(in3, GPIO.OUT)
 GPIO.setup(in4, GPIO.OUT)
 GPIO.setup(en1, GPIO.OUT)
 GPIO.setup(en2, GPIO.OUT)
+GPIO.setup(servo, GPIO.OUT)
 GPIO.output(in1, GPIO.LOW)
 GPIO.output(in2, GPIO.LOW)
 GPIO.output(in3, GPIO.LOW)
@@ -33,6 +35,8 @@ p1 = GPIO.PWM(en1, 1000)
 p1.start(25)
 p2 = GPIO.PWM(en2, 1000)
 p2.start(25)
+p3 = GPIO.PWM(servo, 50)
+p3.start(3.1)
 
 # Ensure GPIO cleanup on exit
 def cleanup_gpio():
@@ -56,24 +60,56 @@ class MotorDriver(Node):
         self.state = msg.data
         self.get_logger().info(f"Received command: {self.state}")
 
+        
     def test(self):
         temp1 = 1
         try:
             while rclpy.ok():
+                # On laptop: ros2 topic pub /motor_driver std_msgs/msg/String "{data: servo}"       
                 if self.state == "r":
-                    self.get_logger().info("Run motor")
+                    self.get_logger().info("Run motor command received")
                     if temp1 == 1:
+                        self.get_logger().info("Run flywheel motor")
                         GPIO.output(in1, GPIO.HIGH)
                         GPIO.output(in2, GPIO.LOW)
                         GPIO.output(in3, GPIO.HIGH)
                         GPIO.output(in4, GPIO.LOW)
                         self.get_logger().info("Motor running forward")
+                        self.get_logger().info("Run servo motor")
+                        # frist launch
+                        self.get_logger().info("first launch")
+                        p3.ChangeDutyCycle(5.4)
+                        sleep(0.5)
+                        p3.ChangeDutyCycle(3.1)
+                        sleep(2.5)
+                        # second launch 
+                        self.get_logger().info("second launch")
+                        p3.ChangeDutyCycle(5.4)
+                        sleep(0.5)
+                        p3.ChangeDutyCycle(3.1)
+                        sleep(4.5)
+                        # third launch 
+                        self.get_logger().info("third launch")
+                        p3.ChangeDutyCycle(5.4)
+                        sleep(0.5)
+                        p3.ChangeDutyCycle(3.1)
+                        sleep(0.5)
+                        
                     else:
                         GPIO.output(in1, GPIO.LOW)
                         GPIO.output(in2, GPIO.HIGH)
                         GPIO.output(in3, GPIO.LOW)
                         GPIO.output(in4, GPIO.HIGH)
                         self.get_logger().info("Motor running backward")
+                        
+                # On laptop: ros2 topic pub /motor_driver std_msgs/msg/String "{data: servo}"       
+                elif self.state == "servo":
+                    self.get_logger().info("Servo motor command received")
+                    p3.ChangeDutyCycle(5.4)
+                    sleep(0.5)
+                    p3.ChangeDutyCycle(3.1)
+                    sleep(0.5)
+                    self.get_logger().info("Servo motor command completed")
 
                 elif self.state == "s":
                     self.get_logger().info("Stop motor")
