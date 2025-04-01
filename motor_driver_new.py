@@ -65,7 +65,7 @@ class MotorDriver(Node):
         temp1 = 1
         try:
             while rclpy.ok():
-                # On laptop: ros2 topic pub /motor_driver std_msgs/msg/String "{data: servo}"       
+                # On laptop: ros2 topic pub /motor_driver std_msgs/msg/String "{data: r}"       
                 if self.state == "r":
                     self.get_logger().info("Run motor command received")
                     if temp1 == 1:
