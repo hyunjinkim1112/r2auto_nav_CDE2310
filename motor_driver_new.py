@@ -36,7 +36,7 @@ p1.start(25)
 p2 = GPIO.PWM(en2, 1000)
 p2.start(25)
 p3 = GPIO.PWM(servo, 50)
-p3.start(3.1)
+p3.start(2.6)
 
 # Ensure GPIO cleanup on exit
 def cleanup_gpio():
@@ -76,23 +76,18 @@ class MotorDriver(Node):
                         GPIO.output(in4, GPIO.LOW)
                         self.get_logger().info("Motor running forward")
                         self.get_logger().info("Run servo motor")
-                        # frist launch
+                        # first launch
                         self.get_logger().info("first launch")
-                        p3.ChangeDutyCycle(5.4)
-                        sleep(0.5)
-                        p3.ChangeDutyCycle(3.1)
-                        sleep(2.5)
+                        move_servo()
+                        sleep(2)
                         # second launch 
                         self.get_logger().info("second launch")
-                        p3.ChangeDutyCycle(5.4)
-                        sleep(0.5)
-                        p3.ChangeDutyCycle(3.1)
-                        sleep(4.5)
+                        move_servo()
+                        sleep(4)
                         # third launch 
                         self.get_logger().info("third launch")
-                        p3.ChangeDutyCycle(5.4)
-                        sleep(0.5)
-                        p3.ChangeDutyCycle(3.1)
+                        move_servo()
+                        sleep(2)
                         sleep(0.5)
                         
                     else:
@@ -101,14 +96,32 @@ class MotorDriver(Node):
                         GPIO.output(in3, GPIO.LOW)
                         GPIO.output(in4, GPIO.HIGH)
                         self.get_logger().info("Motor running backward")
+                
+                elif self.state == "fly":
+                    self.get_logger().info("Flywheel motor command received")
+                    if temp1 == 1:
+                        self.get_logger().info("Run flywheel motor")
+                        GPIO.output(in1, GPIO.HIGH)
+                        GPIO.output(in2, GPIO.LOW)
+                        GPIO.output(in3, GPIO.HIGH)
+                        GPIO.output(in4, GPIO.LOW)
+                        self.get_logger().info("Flywheel motor running forward")
+                    else:
+                        GPIO.output(in1, GPIO.LOW)
+                        GPIO.output(in2, GPIO.HIGH)
+                        GPIO.output(in3, GPIO.LOW)
+                        GPIO.output(in4, GPIO.HIGH)
+                        self.get_logger().info("Flywheel motor running backward")
                         
                 # On laptop: ros2 topic pub /motor_driver std_msgs/msg/String "{data: servo}"       
                 elif self.state == "servo":
                     self.get_logger().info("Servo motor command received")
-                    p3.ChangeDutyCycle(5.4)
-                    sleep(0.5)
-                    p3.ChangeDutyCycle(3.1)
-                    sleep(0.5)
+                    move_servo()
+                    self.get_logger().info("Servo motor running")
+                    # p3.ChangeDutyCycle(6.8)
+                    # sleep(0.5)
+                    # p3.ChangeDutyCycle(2.6)
+                    # sleep(0.5)
                     self.get_logger().info("Servo motor command completed")
 
                 elif self.state == "s":
@@ -160,6 +173,11 @@ class MotorDriver(Node):
             self.get_logger().info("Keyboard interrupt detected. Cleaning up...")
             GPIO.cleanup()
 
+def move_servo():
+    p3.ChangeDutyCycle(6.8)
+    sleep(0.5)
+    p3.ChangeDutyCycle(2.6)
+    sleep(0.5)
 
 def main(args=None):
     rclpy.init(args=args)
