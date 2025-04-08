@@ -11,8 +11,8 @@ in1 = 24
 in2 = 23
 in3 = 22
 in4 = 27
-en1 = 25
-en2 = 17
+en1 = 16
+en2 = 16
 servo = 18
 
 # GPIO setup
