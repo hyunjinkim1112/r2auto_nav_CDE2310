@@ -1,9 +1,6 @@
-//
-// Created by omar on 2/5/24.
-//
-//
-// Created by omar on 1/30/24.
-//
+// Acknowledgement: This code is based on the code provided by Omar Salem, which is modified to suit the requirements of the project. https://github.com/Omar-Salem/auto_mapper
+
+
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -34,6 +31,9 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
+//Added std messages
+#include "std_msgs/msg/string.hpp"
+#include <chrono>
 
 using std::placeholders::_1;
 using sensor_msgs::msg::Range;
@@ -60,7 +60,7 @@ using namespace rclcpp_action;
 using namespace nav2_map_server;
 using namespace slam_toolbox;
 using std::chrono::steady_clock;
-
+using geometry_msgs::msg::Twist;
 using NavigateToPose = nav2_msgs::action::NavigateToPose;
 using GoalHandleNavigateToPose = rclcpp_action::ClientGoalHandle<NavigateToPose>;
 
@@ -69,6 +69,8 @@ public:
     AutoMapper()
             : Node("auto_mapper") {
         RCLCPP_INFO(get_logger(), "AutoMapper started...");
+
+        move_pub_ = create_publisher<Twist>("/cmd_vel", 10);
 
         poseSubscription_ = create_subscription<PoseWithCovarianceStamped>(
                 "/pose", 10, bind(&AutoMapper::poseTopicCallback, this, _1));
@@ -79,30 +81,49 @@ public:
         markerArrayPublisher_ = create_publisher<MarkerArray>("/frontiers", 10);
         poseNavigator_ = rclcpp_action::create_client<NavigateToPose>(
                 this,
-                "/navigate_to_pose");
+                "/navigate_to_pose"); 
 
         poseNavigator_->wait_for_action_server();
         RCLCPP_INFO(get_logger(), "AutoMapper poseNavigator_");
         declare_parameter("map_path", rclcpp::PARAMETER_STRING);
         get_parameter("map_path", mapPath_);
+
+        //Create status topics
+        statusSubscription_ = create_subscription<std_msgs::msg::String>(
+                "/navigation_command_in", 10, bind(&AutoMapper::statusTopicCallback, this, _1));
+        
+        statusPublisher_ = create_publisher<std_msgs::msg::String>("/navigation_status_out", 10);
     }
 
 private:
-    const double MIN_FRONTIER_DENSITY = 0.3; // original 0.3, changed to 0.1 for more thorough exploration
-    const double MIN_DISTANCE_TO_FRONTIER = 1.0; // original 1.0, changed to 1.5 for safety
-    const int MIN_FREE_THRESHOLD = 3; // original 3, changed to 2 for more thorough exploration
+    const double MIN_FRONTIER_DENSITY = 0.15;
+    const double MIN_DISTANCE_TO_FRONTIER = 0.3;
+    const int MIN_FREE_THRESHOLD = 2;
     Costmap2D costmap_;
     rclcpp_action::Client<NavigateToPose>::SharedPtr poseNavigator_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr move_pub_;
     Publisher<MarkerArray>::SharedPtr markerArrayPublisher_;
     MarkerArray markersMsg_;
     Subscription<OccupancyGrid>::SharedPtr mapSubscription_;
     bool isExploring_ = false;
     int markerId_;
     string mapPath_;
-
+    // Create int to store number of exploration attempts failed
+    int exploration_attempts_failed = 0;
+    // Added subscriber and publisher for status and command messages
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr statusSubscription_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr statusPublisher_;
+    std_msgs::msg::String::SharedPtr status_;
+    // Added failed goal index
+    int failed_goal_index_increment = 0;
+    // Added explore start check
+    bool explore_start = false;
 
     Subscription<PoseWithCovarianceStamped>::SharedPtr poseSubscription_;
     PoseWithCovarianceStamped::UniquePtr pose_;
+
+    std::chrono::steady_clock::time_point goal_start_time_;
+    rclcpp::TimerBase::SharedPtr timer_;  // Timer to handle quick goal completion
 
     array<unsigned char, 256> costTranslationTable_ = initTranslationTable();
 
@@ -129,6 +150,20 @@ private:
         vector<Point> points;
         string getKey() const{to_string(centroid.x) + "," + to_string(centroid.y);}
     };
+
+    void statusTopicCallback(std_msgs::msg::String::SharedPtr message) {
+    // status_ = move(message);  can remove
+    RCLCPP_INFO(get_logger(), "statusTopicCallback...");
+    if (message->data == "START") {
+        RCLCPP_INFO(get_logger(), "Received START exploration command");
+        explore_start = true;
+        explore();
+    }
+
+    if (message->data == "STOP") { //not needed
+        stop();
+    }
+}
 
     void poseTopicCallback(PoseWithCovarianceStamped::UniquePtr pose) {
         pose_ = move(pose);
@@ -165,8 +200,14 @@ private:
             auto cell_cost = static_cast<unsigned char>(occupancyGrid->data[i]);
             costmap_data[i] = costTranslationTable_[cell_cost];
         }
+        //explore();
+        /*
+        if (explore_start) {
+            explore_start = false;
+            explore();
 
-        explore();
+        else
+        }*/
     }
 
     void drawMarkers(const vector<Frontier> &frontiers) {
@@ -208,22 +249,95 @@ private:
 
     void stop() {
         RCLCPP_INFO(get_logger(), "Stopped...");
-        poseSubscription_.reset();
-        mapSubscription_.reset();
+        poseSubscription_.reset(); //can remove
+        mapSubscription_.reset(); //can remove
         poseNavigator_->async_cancel_all_goals();
-        saveMap();
-        clearMarkers();
+        //saveMap(); //can remove 
+        clearMarkers();  
+    }
+    void restart() {
+        RCLCPP_INFO(get_logger(), "Restarting...");
+        poseSubscription_ = create_subscription<PoseWithCovarianceStamped>(
+                "/pose", 10, bind(&AutoMapper::poseTopicCallback, this, _1));
+
+        mapSubscription_ = create_subscription<OccupancyGrid>(
+                "/map", 10, bind(&AutoMapper::updateFullMap, this, _1));
+    }
+
+    void moveInRandomDirection() {
+        // Create a twist message for movement
+        geometry_msgs::msg::Twist move_cmd;
+
+        // Set a random linear velocity (forward speed)
+        move_cmd.linear.x = 0.2;  // Move forward with a small speed (adjust as needed)
+
+        // Set a random angular velocity (left or right turn)
+        move_cmd.angular.z = ((rand() % 2) * 2 - 1) * 0.5;  // Random turn (clockwise or counterclockwise)
+
+        // Publish the command to the robot to start moving
+        move_pub_->publish(move_cmd);
+
+        RCLCPP_INFO(get_logger(), "Moving in a random direction...");
+
+        // Move for 1 second
+        rclcpp::sleep_for(std::chrono::seconds(1));
+
+        // Stop the robot by setting velocity to zero
+        move_cmd.linear.x = 0.0;  // Stop linear motion (stop moving forward)
+        move_cmd.angular.z = 0.0; // Stop angular motion (stop turning)
+
+        // Publish the stop command
+        move_pub_->publish(move_cmd);
+
+        RCLCPP_INFO(get_logger(), "Stopped moving.");
     }
 
     void explore() {
+        //added check for manual exploration start
+        if (!explore_start) { 
+            RCLCPP_INFO(get_logger(), "Explore stopped");
+            return; 
+        }
         if (isExploring_) { return; }
         auto frontiers = findFrontiers();
-        if (frontiers.empty()) {
-            RCLCPP_WARN(get_logger(), "NO BOUNDARIES FOUND!!");
+        // If exploration attempts failed more than 5 times, send a message to coordinator node to initiate lidar-based exploration
+        if (exploration_attempts_failed > 5) {
+            RCLCPP_WARN(get_logger(), "Exploration attempts failed more than 5 times. Requesting assisted exploration...");
+            // Add code for sending a new message to send to the coordinator node here
+            std_msgs::msg::String command;
+            command.data = "r2autonav";
+            statusPublisher_->publish(command);
+            rclcpp::sleep_for(std::chrono::seconds(2));
             stop();
+            restart();
+            //updateFullMap(); //maybe add havent checked effect
+            exploration_attempts_failed = 0;
+            //explore();
             return;
         }
-        const auto frontier = frontiers[0];
+        if (frontiers.empty()) {
+            exploration_attempts_failed++;
+            RCLCPP_WARN(get_logger(), "NO BOUNDARIES FOUND!!");
+            RCLCPP_WARN(get_logger(), "No frontiers found, retrying...");
+            //moveInRandomDirection();
+            rclcpp::sleep_for(std::chrono::seconds(1));
+            stop();
+            restart();
+            explore();
+            //stop();
+            return;
+            
+        }
+        // If failed goal increment gretaer than 3, stop and restart
+        if (failed_goal_index_increment > 3) {
+            RCLCPP_WARN(get_logger(), "Failed goal index greater than 3. Stopping and restarting...");
+            stop();
+            restart();
+            failed_goal_index_increment = 0;
+            return;
+        }
+        // If goal failed, increment the goal index so previous goal is not chosen
+        const auto frontier = frontiers[0 + failed_goal_index_increment];
         drawMarkers(frontiers);
         auto goal = NavigateToPose::Goal();
         goal.pose.pose.position = frontier.centroid;
@@ -238,6 +352,7 @@ private:
             if (goal_handle) {
                 RCLCPP_INFO(get_logger(), "Goal accepted by server, waiting for result");
                 isExploring_ = true;
+                goal_start_time_ = std::chrono::steady_clock::now();
             } else {
                 RCLCPP_ERROR(get_logger(), "Goal was rejected by server");
             }
@@ -251,15 +366,39 @@ private:
 
         send_goal_options.result_callback = [this](const GoalHandleNavigateToPose::WrappedResult &result) {
             isExploring_ = false;
-            saveMap();
+            auto goal_end_time = std::chrono::steady_clock::now();
+            auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(goal_end_time - goal_start_time_).count();
+            if (elapsed_time < 1) {
+                RCLCPP_INFO(get_logger(), "Goal reached too quickly, calling r2autonav");
+                    std_msgs::msg::String command;
+                    command.data = "r2autonav";
+                    statusPublisher_->publish(command);
+                    stop();
+                    restart();
+                return;
+            }
+            std_msgs::msg::String statusMessage;
+            statusMessage.data = "GOAL_REACHED";
+            //saveMap();
             clearMarkers();
-            explore();
+            //explore(); might need to add back
             switch (result.code) {
                 case rclcpp_action::ResultCode::SUCCEEDED:
                     RCLCPP_INFO(get_logger(), "Goal reached");
+                    failed_goal_index_increment = 0;
+                    explore_start = false;
+                    //std_msgs::msg::String statusMessage;
+                    //statusMessage.data = "GOAL_REACHED";
+                    statusPublisher_->publish(statusMessage);
+                    stop();
+                    restart();
+                    //poseNavigator_->async_cancel_all_goals();
                     break;
                 case rclcpp_action::ResultCode::ABORTED:
                     RCLCPP_ERROR(get_logger(), "Goal was aborted");
+                    // stop(); can try this
+                    // restart();
+                    failed_goal_index_increment++;
                     break;
                 case rclcpp_action::ResultCode::CANCELED:
                     RCLCPP_ERROR(get_logger(), "Goal was canceled");
