@@ -12,7 +12,7 @@ in2 = 23
 in3 = 22
 in4 = 27
 en1 = 16
-en2 = 16
+en2 = 17
 servo = 18
 
 # GPIO setup
@@ -36,7 +36,7 @@ p1.start(25)
 p2 = GPIO.PWM(en2, 1000)
 p2.start(25)
 p3 = GPIO.PWM(servo, 50)
-p3.start(2.6)
+p3.start(5.5)
 
 # Ensure GPIO cleanup on exit
 def cleanup_gpio():
@@ -182,9 +182,9 @@ class MotorDriver(Node):
             GPIO.cleanup()
 
 def move_servo():
-    p3.ChangeDutyCycle(6.8)
+    p3.ChangeDutyCycle(9.8)
     sleep(0.5)
-    p3.ChangeDutyCycle(2.6)
+    p3.ChangeDutyCycle(5.5)
     sleep(0.5)
 
 def main(args=None):
