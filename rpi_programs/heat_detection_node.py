@@ -37,6 +37,9 @@ def euler_from_quaternion(x, y, z, w):
 
 rotatechange = 0.5
 speedchange = 0.05
+stop_distance = 0.2
+front_angle = 30
+front_angles = range(-front_angle,front_angle+1,1)
 
 class HeatDetection(Node):
     def __init__(self):
@@ -100,7 +103,7 @@ class HeatDetection(Node):
         except Exception as e:
             self.get_logger().error(f"Error reading thermal sensor: {e}")
             return 0.0
-    #"""
+    
     def spin_to_angle(self, rot_angle):
         # self.get_logger().info('In rotatebot')
         # create Twist object
@@ -129,7 +132,7 @@ class HeatDetection(Node):
         # start rotation
         self.cmd_vel_pub.publish(twist)
 
-        # we will use the c_dir_diff variable to see if we can stop rotating
+        # we will use the c_dir_ diff variable to see if we can stop rotating
         c_dir_diff = c_change_dir
         # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
         # if the rotation direction was 1.0, then we will want to stop when the c_dir_diff
@@ -152,42 +155,18 @@ class HeatDetection(Node):
         twist.angular.z = 0.0
         # stop the rotation
         self.cmd_vel_pub.publish(twist)
-    """
-    def spin_to_angle(self, target_angle):
-        #Spin the robot to the given target angle.
-        twist_msg = Twist()
-        # Calculate the direction to turn
-        current_angle = 0  # Assuming the robot starts facing 0 degrees (can be adjusted based on actual orientation)
-        angle_diff = target_angle - current_angle
-        # Ensure the robot turns in the shortest direction (clockwise or counterclockwise)
-        if angle_diff > 180:
-            angle_diff -= 360
-        elif angle_diff < -180:
-            angle_diff += 360
-        twist_msg.angular.z = 0.5 if angle_diff > 0 else -0.5  # Turn in the appropriate direction
-        # Spin the robot until the angle is reached
-        start_time = self.get_clock().now()
-        spin_duration = abs(angle_diff) / 180  # Duration to turn (based on angular velocity)
-        while (self.get_clock().now() - start_time).nanoseconds / 1e9 < spin_duration:
-            self.cmd_vel_pub.publish(twist_msg)
-            rclpy.spin_once(self, timeout_sec=0.1)
-        # Stop the robot after spinning
-        twist_msg.angular.z = 0.0
-        self.cmd_vel_pub.publish(twist_msg)
-        self.get_logger().info(f"Aligned to {target_angle} degrees.")
-    """
+
     def start_detection(self):
         while not self.start_command:
             rclpy.spin_once(self)
         self.spin_robot()
         self.control_robot()
-        self.thermal_pub.publish(String(data='HEAT_SOURCE_DETECTED'))
+        #self.thermal_pub.publish(String(data='HEAT_SOURCE_DETECTED'))
         self.start_command = False
         #self.thermal_pub.publish(String(data='HEAT_SOURCE_REACHED'))
         
         
     def spin_robot(self):
-        """Spins the robot 360 degrees while recording temperature data from the sensor."""
         # if self.last_temp is None:
         #     self.get_logger().warn("No temperature data available, cannot spin robot.")
         #     return
@@ -203,7 +182,7 @@ class HeatDetection(Node):
 
         # Record temperatures at intervals
         start_time = self.get_clock().now()
-        measure_interval = spin_duration / 36  # Capture temperature every 10 degrees
+        measure_interval = spin_duration / 72  # Capture temperature every 5 degrees
         next_measure_time = measure_interval
 
         self.thermal_array = []
@@ -230,7 +209,6 @@ class HeatDetection(Node):
         #self.get_logger().info(f"Thermal array: {self.thermal_array}")
 
     def control_robot(self):
-        """Control robot movement based on the thermal array."""
         if not self.thermal_array:
             self.get_logger().warn("No temperature data available in thermal_array.")
             return
@@ -246,7 +224,7 @@ class HeatDetection(Node):
         if highest_temp_index == -1:
             self.get_logger().info("No temperature reading higher than 25 found.")
             self.thermal_pub.publish(String(data='NO_HEAT_SOURCE_FOUND'))
-            return
+            return None
 
         self.get_logger().info(f"Highest temperature {highest_temp:.2f} found at index {highest_temp_index}.")
 
@@ -256,19 +234,66 @@ class HeatDetection(Node):
 
         # Spin the robot to face the direction of the highest temperature
         self.spin_to_angle(angle)
+        self.thermal_pub.publish(String(data='HEAT_SOURCE_DETECTED'))
 
         # Move the robot forward towards the target temperature area
         #self.move_toward_target()
 
     def move_toward_target(self):
-        """Move the robot forward after aligning to the highest temperature direction."""
         twist_msg = Twist()
         twist_msg.linear.x = 0.2  # Move forward with moderate speed
         # Move forward for a short time (or until the next goal is met)
         self.cmd_vel_pub.publish(twist_msg)
         self.get_logger().info("Moving toward the target area...")
-        while self.get_temp() < 29:
-            pass
+        while self.get_temp() < 27:
+            if self.laser_range.size != 0:
+                lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
+            # self.get_logger().info('Distances: %s' % str(lri))
+            # if the list is not empty
+                if(len(lri[0])>0):
+            # stop moving
+                    twist_msg.linear.x = 0.0
+                    self.cmd_vel_pub.publish(twist_msg)
+                    if any(index > 30 for index in lri[0]):
+                        self.get_logger().info("Obstacle detected on the right. Turning left and moving.")
+                        min_index = min(lri[0])
+                        twist_msg.linear.x = 0.0  # Stop moving forward
+                        twist_msg.angular.z = -0.1  # Turn left
+                        spin_duration = (min_index*(3.14/180))/ abs(twist_msg.angular.z)
+                        self.cmd_vel_pub.publish(twist_msg)
+                        time.sleep(spin_duration)
+                        twist_msg.linear.x = 0.2
+                        twist_msg.angular.z = 0.0
+                        self.cmd_vel_pub.publish(twist_msg)
+                        time.sleep(1)
+                        twist_msg.linear.x = 0.0
+                        twist_msg.angular.z = 0.1
+                        self.cmd_vel_pub.publish(twist_msg)
+                        time.sleep(spin_duration)
+                        twist_msg.linear.x = 0.2
+                        twist_msg.angular.z = 0.0
+                        self.cmd_vel_pub.publish(twist_msg)
+                    elif any(index < 30 for index in lri[0]):
+                        self.get_logger().info("Obstacle detected on the left. Turning right and moving.")
+                        max_index = max(lri[0])
+                        twist_msg.linear.x = 0.0  
+                        twist_msg.angular.z = 0.1 
+                        spin_duration = (min_index*(3.14/180))/ abs(twist_msg.angular.z)
+                        self.cmd_vel_pub.publish(twist_msg)
+                        time.sleep(spin_duration)
+                        twist_msg.linear.x = 0.2
+                        twist_msg.angular.z = 0.0
+                        self.cmd_vel_pub.publish(twist_msg)
+                        time.sleep(1)
+                        twist_msg.linear.x = 0.0
+                        twist_msg.angular.z = -0.1
+                        self.cmd_vel_pub.publish(twist_msg)
+                        time.sleep(spin_duration)
+                        twist_msg.linear.x = 0.2
+                        twist_msg.angular.z = 0.0
+                        self.cmd_vel_pub.publish(twist_msg)
+
+
         # Run for a short time (e.g., 3 seconds) or adjust this as needed
         #time.sleep(3)
         # Stop the robot after reaching close enough
@@ -280,6 +305,7 @@ class HeatDetection(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = HeatDetection()
+    node.get_logger().info(f"Initial Data: {node.get_temp()}")
     while True:
         node.start_detection()
     rclpy.shutdown()
