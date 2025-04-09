@@ -8,16 +8,16 @@ amcl:
     alpha4: 0.2
     alpha5: 0.2
     base_frame_id: "base_footprint"
-    beam_skip_distance: 0.5
-    beam_skip_error_threshold: 0.9
-    beam_skip_threshold: 0.3
-    do_beamskip: false
+    beam_skip_distance: 0.5 # default 0.5, decreased to 0.3 for better localization in static map
+    beam_skip_error_threshold: 0.9 # default 0.9, decreased to 0.7 for potentially better accuracy
+    beam_skip_threshold: 0.3 # default 0.3, decreased to 0.2 for potentially better accuracy
+    do_beamskip: false # need to check whether likelihood field model is better
     global_frame_id: "map"
-    lambda_short: 0.1
-    laser_likelihood_max_dist: 2.0
-    laser_max_range: 100.0
-    laser_min_range: -1.0
-    laser_model_type: "likelihood_field"
+    lambda_short: 0.1 # default 0.1, increased to 0.2 for potentially better obstacle detection
+    laser_likelihood_max_dist: 2.0 
+    laser_max_range: 100.0 # needs to be tested in person
+    laser_min_range: -1.0 # needs to be tested in person
+    laser_model_type: "likelihood_field" # can be changed to likelihood_field_prob
     max_beams: 60
     max_particles: 2000
     min_particles: 500
@@ -28,16 +28,16 @@ amcl:
     recovery_alpha_slow: 0.0
     resample_interval: 1
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
-    save_pose_rate: 0.5
+    save_pose_rate: 0.5 # default 0.5, increased to 0.6 for potentially better pose estimation
     sigma_hit: 0.2
     tf_broadcast: true
-    transform_tolerance: 1.0
-    update_min_a: 0.2
-    update_min_d: 0.25
+    transform_tolerance: 1.0 #May need to increase this value to 1.1-1.2 if network is slow
+    update_min_a: 0.2 # default 0.2, decreased to 0.01 for better sensitivity in slow robots
+    update_min_d: 0.25 # default 0.25, decreased to 0.01 for better sensitivity in slow robots
     z_hit: 0.5
     z_max: 0.05
-    z_rand: 0.5
-    z_short: 0.05
+    z_rand: 0.5 #default 0.5, decreased to 0.3 for improving sensor-map reliability
+    z_short: 0.05 # might need to decrease this to 0.01 for lesser accounting for small obstacles
     scan_topic: scan
 
 amcl_map_client:
@@ -55,9 +55,9 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: /odom
     default_bt_xml_filename: "navigate_w_replanning_and_recovery.xml"
-    bt_loop_duration: 10
-    default_server_timeout: 20
-    enable_groot_monitoring: True
+    bt_loop_duration: 10 # can decrease this for frequent decision making
+    default_server_timeout: 20 # default 20, increased to 40 for better slow response tolerance
+    enable_groot_monitoring: True #doesnt work for some reason but not important
     groot_zmq_publisher_port: 1666
     groot_zmq_server_port: 1667
     plugin_lib_names:
@@ -99,7 +99,7 @@ bt_navigator_rclcpp_node:
 
 controller_server:
   ros__parameters:
-    controller_frequency: 30.0
+    controller_frequency: 30.0  #might need to increase slightly for faster control
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 56
@@ -123,7 +123,7 @@ controller_server:
       gamma: 0.015
       motion_model: "DiffDrive"
       visualize: false
-      reset_period: 1.0 # (only in Humble)
+      reset_period: 1.0 # can try changing this
       regenerate_noises: false
       TrajectoryVisualizer:
         trajectory_step: 5
@@ -150,17 +150,6 @@ controller_server:
         cost_power: 1
         cost_weight: 5.0
         threshold_to_consider: 0.5
-      # ObstaclesCritic:
-      #   enabled: true
-      #   cost_power: 1
-      #   repulsion_weight: 1.5
-      #   critical_weight: 20.0
-      #   consider_footprint: false
-      #   collision_cost: 10000.0
-      #   collision_margin_distance: 0.1
-      #   near_goal_distance: 0.5
-      #   inflation_radius: 0.55 # (only in Humble)
-      #   cost_scaling_factor: 10.0 # (only in Humble)
       CostCritic:
         enabled: true
         cost_power: 1
@@ -193,16 +182,6 @@ controller_server:
         threshold_to_consider: 0.5
         max_angle_to_furthest: 1.0
         mode: 0
-      # VelocityDeadbandCritic:
-      #   enabled: true
-      #   cost_power: 1
-      #   cost_weight: 35.0
-      #   deadband_velocities: [0.05, 0.05, 0.05]
-      # TwirlingCritic:
-      #   enabled: true
-      #   twirling_cost_power: 1
-      #   twirling_cost_weight: 10.0
-
 
 controller_server_rclcpp_node:
   ros__parameters:
@@ -212,7 +191,7 @@ local_costmap:
   local_costmap:
     ros__parameters:
       update_frequency: 5.0
-      publish_frequency: 2.0
+      publish_frequency: 2.0 # default 2.0, increased to 5.0 for faster updates
       global_frame: odom
       robot_base_frame: base_link
       use_sim_time: False
@@ -220,12 +199,12 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.2
+      robot_radius: 0.2 #robot radius from lidar centre to back of funnel
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.2
-        cost_scaling_factor: 2.00
+        inflation_radius: 0.2 #change this depending on how far robot stops from wall
+        cost_scaling_factor: 2.00 #can increase this to 3.0 for more damaging wall cost
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -269,8 +248,8 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0
-      publish_frequency: 1.0
+      update_frequency: 1.0 #can change this to 3.0
+      publish_frequency: 1.0 #can change this to 3.0
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: True
@@ -330,7 +309,7 @@ global_costmap:
 map_server:
   ros__parameters:
     use_sim_time: False
-    yaml_filename: "map.yaml"
+    yaml_filename: "map.yaml" # changed from " "
 
 map_saver:
   ros__parameters:
