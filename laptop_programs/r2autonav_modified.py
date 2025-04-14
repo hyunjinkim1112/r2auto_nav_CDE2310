@@ -27,14 +27,14 @@ import time
 
 # constants
 rotatechange = 0.5 #0.1
-speedchange = 0.12
+speedchange = 0.1
 occ_bins = [-1, 0, 100, 101]
-stop_distance = 0.25
+stop_distance = 0.4
 front_angle = 30
 front_angles = range(-front_angle,front_angle+1,1)
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
-max_runtime = 8
+max_runtime = 25
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -263,26 +263,68 @@ class AutoNav(Node):
 
         self.pick_direction()
         start_time = time.time()    
-
+        twist_msg = Twist()
         #while rclpy.ok():
         while True:
             elapsed_time = time.time() - start_time
+            #self.get_logger().error(f"{self.laser_range[front_angles]}")
             if self.laser_range.size != 0:
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
                 lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
                     # self.get_logger().info('Distances: %s' % str(lri))
-
+                #NEED TO CHECK LRI WHEN TURNING AGAIN
                     # if the list is not empty
                 if(len(lri[0])>0):
                         # stop moving
-                    self.stopbot()
-                    self.start_command = False
-                    break
+                        twist_msg.linear.x = 0.0
+                        self.publisher_.publish(twist_msg)
+                        if any(index > 30 for index in lri[0]):
+                            self.get_logger().info("Obstacle detected on the left. Turning right")
+                            min_index = min(lri[0])
+                            twist_msg.linear.x = 0.0  # Stop moving forward
+                            twist_msg.angular.z = -1*rotatechange  # Turn left
+                            spin_duration = (min_index*(3.14/180))/ abs(twist_msg.angular.z)
+                            self.publisher_.publish(twist_msg)
+                            time.sleep(spin_duration)
+                            #twist_msg.linear.x = 0.2
+                            #twist_msg.angular.z = 0.0
+                            #self.publisher_.publish(twist_msg)
+                            #time.sleep(1)
+                            #twist_msg.linear.x = 0.0
+                            #twist_msg.angular.z = 0.1
+                            #self.publisher_.publish(twist_msg)
+                            #time.sleep(spin_duration)
+                            twist_msg.linear.x = speedchange
+                            twist_msg.angular.z = 0.0
+                            self.publisher_.publish(twist_msg)
+                        elif any(index < 30 for index in lri[0]):
+                            self.get_logger().info("Obstacle detected on the right. Turning left")
+                            max_index = max(lri[0])
+                            twist_msg.linear.x = 0.0  
+                            twist_msg.angular.z = rotatechange
+                            spin_duration = (max_index*(3.14/180))/ abs(twist_msg.angular.z)
+                            self.publisher_.publish(twist_msg)
+                            time.sleep(spin_duration)
+                            #twist_msg.linear.x = 0.2
+                            #twist_msg.angular.z = 0.0
+                            #self.publisher_.publish(twist_msg)
+                            #time.sleep(1)
+                            #twist_msg.linear.x = 0.0
+                            #twist_msg.angular.z = -0.1
+                            #self.publisher_.publish(twist_msg)
+                            #time.sleep(spin_duration)
+                            twist_msg.linear.x = speedchange
+                            twist_msg.angular.z = 0.0
+                            self.publisher_.publish(twist_msg)
+                    #self.stopbot()
+                    #self.start_command = False
+                    #break
             if elapsed_time > max_runtime:
                 self.get_logger().info("Maximum runtime exceeded. Stopping the robot.")
                 self.stopbot()
                 self.start_command = False
+                self.r2autonav_status_pub.publish(String(data="GOAL_REACHED"))
                 break
                     
                 # allow the callback functions to run
