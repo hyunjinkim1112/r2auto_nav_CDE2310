@@ -12,7 +12,7 @@ import numpy as np
 import math
 import cmath
 import time
-
+from sensor_msgs.msg import LaserScan
 def euler_from_quaternion(x, y, z, w):
     """
     Convert a quaternion into euler angles (roll, pitch, yaw)
@@ -35,12 +35,14 @@ def euler_from_quaternion(x, y, z, w):
 
     return roll_x, pitch_y, yaw_z # in radians
 
-rotatechange = 0.5
-speedchange = 0.05
-stop_distance = 0.2
+rotatechange = 0.3
+speedchange = 0.1
+stop_distance = 0.3
 front_angle = 30
 front_angles = range(-front_angle,front_angle+1,1)
-
+heat_reached_threshold = 37.0
+heat_detected_threshold = 28.7
+temperature_capture_angle = 3
 class HeatDetection(Node):
     def __init__(self):
         super().__init__('heat_detection_node')
@@ -67,7 +69,10 @@ class HeatDetection(Node):
         self.pitch = 0
         self.yaw = 0
         self.start_command = False
-    
+
+
+
+
     def odom_callback(self, msg):
     # self.get_logger().info('In odom_callback')
         orientation_quat =  msg.pose.pose.orientation
@@ -175,14 +180,14 @@ class HeatDetection(Node):
         
         # Create a Twist message for spinning
         twist_msg = Twist()
-        twist_msg.angular.z = 0.5  # Angular velocity (adjust as needed)
+        twist_msg.angular.z = rotatechange  # Angular velocity (adjust as needed)
 
-        # Calculate spin duration for 360 degrees
-        spin_duration = 2 *1* 3.14159 / abs(twist_msg.angular.z)  # radians / angular velocity
+        # Calculate spin duration for 360 degrees 
+        spin_duration = 2 *1* 3.14159 / (abs(twist_msg.angular.z)) # radians / angular velocity
 
         # Record temperatures at intervals
         start_time = self.get_clock().now()
-        measure_interval = spin_duration / 72  # Capture temperature every 5 degrees
+        measure_interval = (spin_duration / (360/temperature_capture_angle))  # Capture temperature every 5 degrees
         next_measure_time = measure_interval
 
         self.thermal_array = []
@@ -197,12 +202,13 @@ class HeatDetection(Node):
                 #self.get_logger().info(f'Temperature recorded: {temp:.2f}')
                 next_measure_time += measure_interval
 
-            rclpy.spin_once(self, timeout_sec=0.1)
+            rclpy.spin_once(self)
 
         # Stop the robot after spinning
         twist_msg.angular.z = 0.0
         self.cmd_vel_pub.publish(twist_msg)
         self.get_logger().info('Robot spin completed!')
+        self.thermal_array = self.thermal_array[0:int((360/temperature_capture_angle))]
         time.sleep(5)
 
         # Log thermal array
@@ -217,12 +223,12 @@ class HeatDetection(Node):
         highest_temp = None
         highest_temp_index = -1
         for idx, temp in enumerate(self.thermal_array):
-            if temp > 25.0 and (highest_temp is None or temp > highest_temp):
+            if temp > heat_detected_threshold and (highest_temp is None or temp > highest_temp):
                 highest_temp = temp
                 highest_temp_index = idx
 
         if highest_temp_index == -1:
-            self.get_logger().info("No temperature reading higher than 25 found.")
+            self.get_logger().info(f"No temperature reading higher than {heat_detected_threshold} found.")
             self.thermal_pub.publish(String(data='NO_HEAT_SOURCE_FOUND'))
             return None
 
@@ -230,70 +236,35 @@ class HeatDetection(Node):
 
         # Convert the index to an angle
         # Assuming that the robot did a full 360-degree spin and we took 36 measurements (10-degree intervals)
-        angle = highest_temp_index * 10  # 10 degrees between each measurement
+        angle = highest_temp_index * temperature_capture_angle  # 5 degrees between each measurement
 
         # Spin the robot to face the direction of the highest temperature
         self.spin_to_angle(angle)
         self.thermal_pub.publish(String(data='HEAT_SOURCE_DETECTED'))
+        #self.thermal_pub.publish(String(data=f'HEAT_SOURCE_DETECTED,{highest_temp:.2f}'))
 
         # Move the robot forward towards the target temperature area
         #self.move_toward_target()
 
     def move_toward_target(self):
         twist_msg = Twist()
-        twist_msg.linear.x = 0.2  # Move forward with moderate speed
-        # Move forward for a short time (or until the next goal is met)
-        self.cmd_vel_pub.publish(twist_msg)
-        self.get_logger().info("Moving toward the target area...")
-        while self.get_temp() < 27:
-            if self.laser_range.size != 0:
-                lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
-            # self.get_logger().info('Distances: %s' % str(lri))
-            # if the list is not empty
-                if(len(lri[0])>0):
-            # stop moving
-                    twist_msg.linear.x = 0.0
-                    self.cmd_vel_pub.publish(twist_msg)
-                    if any(index > 30 for index in lri[0]):
-                        self.get_logger().info("Obstacle detected on the right. Turning left and moving.")
-                        min_index = min(lri[0])
-                        twist_msg.linear.x = 0.0  # Stop moving forward
-                        twist_msg.angular.z = -0.1  # Turn left
-                        spin_duration = (min_index*(3.14/180))/ abs(twist_msg.angular.z)
-                        self.cmd_vel_pub.publish(twist_msg)
-                        time.sleep(spin_duration)
-                        twist_msg.linear.x = 0.2
-                        twist_msg.angular.z = 0.0
-                        self.cmd_vel_pub.publish(twist_msg)
-                        time.sleep(1)
-                        twist_msg.linear.x = 0.0
-                        twist_msg.angular.z = 0.1
-                        self.cmd_vel_pub.publish(twist_msg)
-                        time.sleep(spin_duration)
-                        twist_msg.linear.x = 0.2
-                        twist_msg.angular.z = 0.0
-                        self.cmd_vel_pub.publish(twist_msg)
-                    elif any(index < 30 for index in lri[0]):
-                        self.get_logger().info("Obstacle detected on the left. Turning right and moving.")
-                        max_index = max(lri[0])
-                        twist_msg.linear.x = 0.0  
-                        twist_msg.angular.z = 0.1 
-                        spin_duration = (min_index*(3.14/180))/ abs(twist_msg.angular.z)
-                        self.cmd_vel_pub.publish(twist_msg)
-                        time.sleep(spin_duration)
-                        twist_msg.linear.x = 0.2
-                        twist_msg.angular.z = 0.0
-                        self.cmd_vel_pub.publish(twist_msg)
-                        time.sleep(1)
-                        twist_msg.linear.x = 0.0
-                        twist_msg.angular.z = -0.1
-                        self.cmd_vel_pub.publish(twist_msg)
-                        time.sleep(spin_duration)
-                        twist_msg.linear.x = 0.2
-                        twist_msg.angular.z = 0.0
-                        self.cmd_vel_pub.publish(twist_msg)
+        if self.get_temp() < heat_reached_threshold:
 
-
+            twist_msg.linear.x = 0.05  # Move forward with moderate speed
+            # Move forward for a short time (or until the next goal is met)
+            self.cmd_vel_pub.publish(twist_msg)
+            self.get_logger().info("Moving toward the target area...")
+            while self.get_temp() < heat_reached_threshold:
+                if self.laser_range.size != 0:
+                    lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
+                # self.get_logger().info('Distances: %s' % str(lri))
+                # if the list is not empty
+                    if(len(lri[0])>0):
+                        # stop the robot
+                        twist_msg.linear.x = 0.0
+                        self.cmd_vel_pub.publish(twist_msg)
+                        self.get_logger().info("Obstacle detected, stopping robot.")
+                        break
         # Run for a short time (e.g., 3 seconds) or adjust this as needed
         #time.sleep(3)
         # Stop the robot after reaching close enough
@@ -302,6 +273,8 @@ class HeatDetection(Node):
         self.get_logger().info("Stopped moving toward the target area.")
         self.thermal_pub.publish(String(data='HEAT_SOURCE_REACHED'))
     
+    def final_check(self):
+        pass
 def main(args=None):
     rclpy.init(args=args)
     node = HeatDetection()
