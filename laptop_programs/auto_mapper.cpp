@@ -96,9 +96,10 @@ public:
     }
 
 private:
-    const double MIN_FRONTIER_DENSITY = 0.15;
-    const double MIN_DISTANCE_TO_FRONTIER = 0.3;
+    const double MIN_FRONTIER_DENSITY = 0.1;
+    const double MIN_DISTANCE_TO_FRONTIER_SQUARED = pow(0.65,2);
     const int MIN_FREE_THRESHOLD = 2;
+    //const int MAX_OBSTACLE_THRESHOLD = 2;
     Costmap2D costmap_;
     rclcpp_action::Client<NavigateToPose>::SharedPtr poseNavigator_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr move_pub_;
@@ -140,6 +141,11 @@ private:
         cost_translation_table[0] = FREE_SPACE;
         cost_translation_table[99] = 253;
         cost_translation_table[100] = LETHAL_OBSTACLE;
+        /*
+        for (size_t i = 3; i <= 252; ++i) {
+        cost_translation_table[i] = LETHAL_OBSTACLE;
+        }
+        */
         cost_translation_table[static_cast<unsigned char>(-1)] = NO_INFORMATION;
 
         return cost_translation_table;
@@ -302,7 +308,7 @@ private:
         auto frontiers = findFrontiers();
         // If exploration attempts failed more than 5 times, send a message to coordinator node to initiate lidar-based exploration
         if (exploration_attempts_failed > 5) {
-            RCLCPP_WARN(get_logger(), "Exploration attempts failed more than 5 times. Requesting assisted exploration...");
+            RCLCPP_WARN(get_logger(), "Exploration attempts failed more than 5 times. Requesting r2autonav");
             // Add code for sending a new message to send to the coordinator node here
             std_msgs::msg::String command;
             command.data = "r2autonav";
@@ -329,8 +335,8 @@ private:
             
         }
         // If failed goal increment gretaer than 3, stop and restart
-        if (failed_goal_index_increment > 3) {
-            RCLCPP_WARN(get_logger(), "Failed goal index greater than 3. Stopping and restarting...");
+        if (failed_goal_index_increment > 1) {
+            RCLCPP_WARN(get_logger(), "Failed goal index greater than 1. Stopping and restarting...");
             stop();
             restart();
             failed_goal_index_increment = 0;
@@ -369,12 +375,14 @@ private:
             auto goal_end_time = std::chrono::steady_clock::now();
             auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(goal_end_time - goal_start_time_).count();
             if (elapsed_time < 1) {
-                RCLCPP_INFO(get_logger(), "Goal reached too quickly, calling r2autonav");
-                    std_msgs::msg::String command;
-                    command.data = "r2autonav";
-                    statusPublisher_->publish(command);
+                RCLCPP_INFO(get_logger(), "Goal reached too quickly...Exploration failed");
+                    //std_msgs::msg::String command;
+                    //command.data = "r2autonav";
+                    //statusPublisher_->publish(command);
+                    exploration_attempts_failed++;
                     stop();
                     restart();
+                    explore();
                 return;
             }
             std_msgs::msg::String statusMessage;
@@ -385,7 +393,8 @@ private:
             switch (result.code) {
                 case rclcpp_action::ResultCode::SUCCEEDED:
                     RCLCPP_INFO(get_logger(), "Goal reached");
-                    failed_goal_index_increment = 0;
+                    //failed_goal_index_increment = 0;
+                    exploration_attempts_failed = 0;
                     explore_start = false;
                     //std_msgs::msg::String statusMessage;
                     //statusMessage.data = "GOAL_REACHED";
@@ -398,13 +407,21 @@ private:
                     RCLCPP_ERROR(get_logger(), "Goal was aborted");
                     // stop(); can try this
                     // restart();
-                    failed_goal_index_increment++;
+                    //failed_goal_index_increment++;
+                    exploration_attempts_failed++;
+                    explore();
                     break;
                 case rclcpp_action::ResultCode::CANCELED:
                     RCLCPP_ERROR(get_logger(), "Goal was canceled");
+                    //failed_goal_index_increment++;
+                    exploration_attempts_failed++;
+                    explore();
                     break;
                 default:
                     RCLCPP_ERROR(get_logger(), "Unknown result code");
+                    //failed_goal_index_increment++;
+                    exploration_attempts_failed++;
+                    explore();
                     break;
             }
         };
@@ -445,8 +462,8 @@ private:
         for (const auto &d: directions) {
             int newX = x + d.first;
             int newY = y + d.second;
-            if (newX > -1 && newX < costmap_.getSizeInCellsX() &&
-                newY > -1 && newY < costmap_.getSizeInCellsY()) {
+            if (newX >= 0 && newX < static_cast<int>(costmap_.getSizeInCellsX()) &&
+                newY >= 0 && newY < static_cast<int>(costmap_.getSizeInCellsY())) {
                 out.push_back(costmap_.getIndex(newX, newY));
             }
         }
@@ -460,7 +477,16 @@ private:
         if (map[idx] != NO_INFORMATION || frontier_flag[idx]) {
             return false;
         }
-
+        /*
+        int obstacleCount = 0;
+        for (unsigned int nbr: nhood8(idx)) {
+            if (map[nbr] == LETHAL_OBSTACLE) {
+                if (++obstacleCount >= MAX_OBSTACLE_THRESHOLD) {
+                    return false;
+                }
+            }
+        }
+        */
         //check there's enough free space for robot to move to frontier
         int freeCount = 0;
         for (unsigned int nbr: nhood8(idx)) {
@@ -562,9 +588,9 @@ private:
                     frontier_flag[nbr] = true;
                     const Frontier frontier = buildNewFrontier(nbr, frontier_flag);
 
-                    double distance = sqrt(pow((double(frontier.centroid.x) - double(position.x)), 2.0) +
-                                           pow((double(frontier.centroid.y) - double(position.y)), 2.0));
-                    if (distance < MIN_DISTANCE_TO_FRONTIER) { continue; }
+                    double distance_squared = pow((double(frontier.centroid.x) - double(position.x)), 2.0) +
+                                           pow((double(frontier.centroid.y) - double(position.y)), 2.0);
+                    if (distance_squared < MIN_DISTANCE_TO_FRONTIER_SQUARED) { continue; }
                     if (frontier.points.size() * costmap_.getResolution() >=
                         MIN_FRONTIER_DENSITY) {
                         frontier_list.push_back(frontier);
