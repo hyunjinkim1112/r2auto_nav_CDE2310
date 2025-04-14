@@ -1,30 +1,36 @@
+from nav2_msgs.action import NavigateToPose
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_msgs.msg import Bool
 from geometry_msgs.msg import Twist
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 from geometry_msgs.msg import Point
 from nav_msgs.msg import Odometry
 from nav_msgs.msg import OccupancyGrid
 from sensor_msgs.msg import LaserScan
+from action_msgs.msg import GoalStatus
 import math
 import threading
 import numpy as np
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.action import ActionClient
 
 from time import sleep
-
+# WITH NAVIGATION GOALS
 #List of commands on PC terminal
 # python3 ~/Documents/eg2310/coordinator_node.py
 # python3 ~/Documents/eg2310/r2auto_nav_modified.py
 # ros2 launch auto_mapper auto_mapper.launch.py map_path:=~/map is_sim:=false
- 
+# reset odom: ros2 service call /reset_odom std_srvs/srv/Empty 
 
 side_angles = range(-90,91,1)
 test_num = 2
+radius_of_search = 0.5  
+distance_threshold = 0.5 #0.3
+heat_distance_threshold = 0.5
 def spin_robot(self):
     self.get_logger().info('Spinning the robot 360 degrees...')
     # Create a Twist message
@@ -43,6 +49,8 @@ def spin_robot(self):
     self.cmd_vel_pub.publish(twist_msg)
     self.get_logger().info('Robot spin completed!')    
 heat_source_array = []
+def heat_distance_change(heat_distance):
+    pass
 #Frontier Navigation
 def start_frontier_navigation(self):
     self.nav_pub.publish(String(data='START'))
@@ -88,16 +96,13 @@ class CoordinatorNode(Node):
         self.shooting_status_sub = self.create_subscription(String, 'shooting_status_out', self.shooting_status_callback, 10)
         self.r2autonav_status_sub = self.create_subscription(String, 'r2autonav_status_out', self.r2autonav_status_callback, 10)
         self.thermal_sub = self.create_subscription(String, 'thermal_status_out', self.thermal_status_callback, 10)
-
+        #self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.pose_sub = self.create_subscription(Odometry, '/odom', self.odom_topic_callback, 10)
         self.current_pose = None
         self.marker_array_pub = self.create_publisher(MarkerArray, '/heat_sources', 10)
         self.marker_array = MarkerArray()
 
-        # Flag to track if navigation task is completed
-        self.nav_completed = False
-        self.shooting_completed = False
-        """
+        self.nav_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.scan_subscription = self.create_subscription(
             LaserScan,
             'scan',
@@ -105,47 +110,53 @@ class CoordinatorNode(Node):
             qos_profile_sensor_data)
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
-        # Subscriber to get occupancy grid data
-        """
-        """
-        self.occ_subscription = self.create_subscription(
-        OccupancyGrid,
-        'map',
-        self.occ_callback,
-        qos_profile_sensor_data)
-        self.occ_subscription  # prevent unused variable warning
-        self.occdata = np.array([])
-        """
-
         input_thread = threading.Thread(target=self.wait_for_start_command)
         input_thread.daemon = True  # Ensure the thread exits when the program exits
         input_thread.start()
+
+    def scan_callback(self, msg):
+        # self.get_logger().info('In scan_callback')
+        # create numpy array
+        self.laser_range = np.array(msg.ranges)
+        # print to file
+        #np.savetxt(scanfile, self.laser_range)
+        # replace 0's with nan
+        self.laser_range[self.laser_range==0] = np.nan
 
     def wait_for_start_command(self):
         while True:
             user_input = input("Enter 'r' to start navigation: ").strip().lower()
             if user_input == 'r':
+                twist_msg = Twist()
+                twist_msg.linear.x = 0.1
+                self.cmd_vel_pub.publish(twist_msg)
+                sleep(3) #might need to increase
+                twist_msg.linear.x = 0.0
+                self.cmd_vel_pub.publish(twist_msg)
                 start_frontier_navigation(self)
                 break
             if user_input == 'pass':
                 break
+            if user_input == 'TestMotor':
+                start_shooting(self)
+                sleep(1)
+                stop_shooting(self)
 
 #ros2 topic pub /navigation_command_in std_msgs/msg/String "{data: 'START'}"
     def nav_status_callback(self, msg):
         if msg.data == "GOAL_REACHED":
             self.get_logger().info('Frontier Navigation Goal completed! Starting Thermal Detection...')
-            if len(heat_source_array) == 2: #if len(test_num) == 2:
-                self.ramp_detection()
-            else:
-                sleep(5)
-                start_thermal(self)
+            #if len(heat_source_array) == 2: #if len(test_num) == 2:
+                #self.ramp_detection()
+            #else:
+            sleep(1)
+            start_thermal(self)
             #start_frontier_navigation(self)
         elif msg.data == "r2autonav":
             start_r2autonav(self) 
             #Add delay here to allow r2autonav to complete
-            sleep(5)
-            stop_r2autonav(self)
-            start_thermal(self)
+            #sleep(5)
+            #start_thermal(self)
             #self.nav_completed = True
             #self.check_all_tasks_completed()
 
@@ -166,40 +177,29 @@ class CoordinatorNode(Node):
             if self.current_pose:
                 if not self.is_duplicate_heat_source(self.current_pose):
                     self.get_logger().info('Heat source seeking!')
-                    self.thermal_pub.publish(String(data='HEAT_SOURCE_SEEK'))
+                    #self.thermal_pub.publish(String(data='HEAT_SOURCE_SEEK'))
+                    heat_goal_point = self.project_point(self.current_pose)
+                    self.navgoal_pub(heat_goal_point, self.current_pose)
                 else:
                     self.get_logger().warn("Heat source already detected in this direction.")
-                    stop_thermal(self)
-        elif msg.data == "HEAT_SOURCE_REACHED":
-            self.publish_marker(self.current_pose)
-            heat_source_array.append(self.current_pose)
-            self.get_logger().info(f"New heat source recorded at: {self.current_pose.position.x}, {self.current_pose.position.y}")
-            start_shooting(self)
+                    #stop_thermal(self)
+
+        #elif msg.data == "HEAT_SOURCE_REACHED":
+            #self.publish_marker(self.current_pose)
+            #heat_source_array.append(self.current_pose)
+            #self.get_logger().info(f"New heat source recorded at: {self.current_pose.position.x}, {self.current_pose.position.y}")
+            #start_shooting(self)
         
         elif msg.data == "NO_HEAT_SOURCE_FOUND":
             self.get_logger().info('Heat source not detected!')
             start_frontier_navigation(self)
                     
 #ros2 topic pub /thermal_status_out std_msgs/msg/String "{data: "HEAT_SOURCE_DETECTED"}"  
-    """      
-    def thermal_status_callback(self, msg):
-        if msg.data == "HEAT_SOURCE_DETECTED":
-            self.get_logger().info('Heat source detected!')
-            if self.current_pose:
-                if not self.is_duplicate_heat_source(self.current_pose):
-                    self.publish_marker(self.current_pose)
-                    heat_source_array.append(self.current_pose)
-                    self.get_logger().info(f"New heat source recorded at: {self.current_pose.position.x}, {self.current_pose.position.y}")
-                else:
-                    self.get_logger().info("Heat source already detected in this direction.")
-            else:
-                self.get_logger().warn("Current pose is not available.")
-    """
-    
+ 
     def is_duplicate_heat_source(self, current_pose):
         # Define thresholds
-        radius_of_search = 0.5  # Meters
-        distance_threshold = 0.3  # Meters
+        #radius_of_search = 0.5  # Meters
+        #distance_threshold = 0.3  # Meters
         #angular_threshold = 0.1  # Radians
         current_yaw = self.get_yaw_from_quaternion(current_pose.orientation)
         # Project a point 0.5m ahead in the direction the robot is facing
@@ -219,6 +219,13 @@ class CoordinatorNode(Node):
 
         return False  # No heat source detected near the projected point
     
+    def project_point(self, current_pose):
+        # Calculate the projected point based on the current pose and distance
+        current_yaw = self.get_yaw_from_quaternion(current_pose.orientation)
+        projected_x = current_pose.position.x + distance_threshold * math.cos(current_yaw)
+        projected_y = current_pose.position.y + distance_threshold * math.sin(current_yaw)
+        return projected_x, projected_y
+
     def get_yaw_from_quaternion(self, orientation):
         # Convert quaternion to yaw (rotation around the Z-axis)
         siny_cosp = 2 * (orientation.w * orientation.z + orientation.x * orientation.y)
@@ -300,77 +307,58 @@ class CoordinatorNode(Node):
             else:
                 pass
                     
-    def scan_callback(self, msg):
-        # self.get_logger().info('In scan_callback')
-        # create numpy array
-        self.laser_range = np.array(msg.ranges)
-        # print to file
-        #np.savetxt(scanfile, self.laser_range)
-        # replace 0's with nan
-        self.laser_range[self.laser_range==0] = np.nan
-    """
-    def occ_callback(self, msg):
-        # self.get_logger().info('In occ_callback')
-        # create numpy array
-        msgdata = np.array(msg.data)
-        # compute histogram to identify percent of bins with -1
-        # occ_counts = np.histogram(msgdata,occ_bins)
-        # calculate total number of bins
-        # total_bins = msg.info.width * msg.info.height
-        # log the info
-        # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i T
+    def navgoal_pub(self, projected_pose, current_pose):
+        current_yaw = self.get_yaw_from_quaternion(current_pose.orientation)
+        #current_location_x, current_location_y = current_pose.position.x, current_pose.position.y
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose.header.frame_id = 'map'
+        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+        
+        goal_msg.pose.pose.position.x = projected_pose[0]
+        goal_msg.pose.pose.position.y = projected_pose[1]
+        goal_msg.pose.pose.orientation = current_pose.orientation
+        heat_goal_status = self.nav_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
+        heat_goal_status.add_done_callback(self.goal_response_callback)
+        # Create the goal message
 
-        # make msgdata go from 0 instead of -1, reshape into 2D
-        oc2 = msgdata + 1
-        # reshape to 2D array using column order
-        # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width
-        self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width))
-        # print to file
-        # np.savetxt(mapfile, self.occdata)
+        # Send the goal to the action server
+        #self.nav_client.send_goal_async(goal_msg)
 
-    # Occupancy Grid too complicated
+    def feedback_callback(self, feedback_msg):
+        feedback = feedback_msg.feedback
 
-    def is_near_unexplored_region(self, current_pose):
+    def goal_response_callback(self, heat_goal_status):
+        goal_handle = heat_goal_status.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn("Goal rejected by Nav2.")
+            return
 
-        # Define the search radius in meters (e.g., 0.1m = 10cm)
-        search_radius = 0.1  # 10 cm
+        self.get_logger().info("Goal accepted by Nav2.")
+        result = goal_handle.get_result_async()
+        result.add_done_callback(self.goal_result_callback)
+    
+    def goal_result_callback(self, goal_status):
+        try:
+            result = goal_status.result().result
+            status = goal_status.result().status
+            #result = result_msg.result 
 
-        # Convert the robot's current position to grid coordinates
-        robot_x, robot_y = current_pose.position.x, current_pose.position.y
-        grid_x, grid_y = self.world_to_map(robot_x, robot_y)
 
-        # Get the map's resolution and dimensions
-        map_height, map_width = self.occdata.shape
-        resolution = 0.03  # Replace with your map's resolution (meters per cell)
+            if status == GoalStatus.STATUS_SUCCEEDED:  # STATUS_SUCCEEDED
+                self.get_logger().info("Goal reached successfully!")
+                self.publish_marker(self.current_pose)
+                heat_source_array.append(self.current_pose)
+                self.get_logger().info(f"New heat source recorded at: {self.current_pose.position.x}, {self.current_pose.position.y}")
+                sleep(2)
+                start_shooting(self)
 
-        # Calculate the number of cells to search in each direction
-        cells_to_search = int(search_radius / resolution)
+            else:
+                self.get_logger().warn(f"Goal ended with failure status: {status}")
 
-        # Iterate through the cells in the search radius
-        for dx in range(-cells_to_search, cells_to_search + 1):
-            for dy in range(-cells_to_search, cells_to_search + 1):
-                neighbor_x = grid_x + dx
-                neighbor_y = grid_y + dy
+        except Exception as e:
+            self.get_logger().error(f"Exception in goal_result_callback: {e}")
 
-                # Check if the neighbor cell is within the map bounds
-                if 0 <= neighbor_x < map_width and 0 <= neighbor_y < map_height:
-                    # Check if the cell is free (0)
-                    if self.occdata[neighbor_y, neighbor_x] == 0:
-                        return True  # Found an free region nearby
 
-        return False  # No unexplored regions nearby
-
-    def world_to_map(self, x, y):
-
-        map_origin_x = 0  # Replace with the map's origin x-coordinate
-        map_origin_y = 0  # Replace with the map's origin y-coordinate
-        resolution = 0.03  # Replace with your map's resolution (meters per cell)
-
-        grid_x = int((x - map_origin_x) / resolution)
-        grid_y = int((y - map_origin_y) / resolution)
-
-        return grid_x, grid_y
-    """
 
 def main(args=None):
     rclpy.init(args=args)
