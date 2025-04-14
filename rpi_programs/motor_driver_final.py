@@ -96,6 +96,10 @@ class MotorDriver(Node):
                         move_servo()
                         sleep(2)
                         sleep(0.5)
+                        GPIO.output(in1, GPIO.LOW)
+                        GPIO.output(in2, GPIO.LOW)
+                        GPIO.output(in3, GPIO.LOW)
+                        GPIO.output(in4, GPIO.LOW)
                         return None
                         
                     else:
