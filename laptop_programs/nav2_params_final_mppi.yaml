@@ -17,7 +17,7 @@ amcl:
     laser_likelihood_max_dist: 2.0 
     laser_max_range: 100.0 # needs to be tested in person
     laser_min_range: -1.0 # needs to be tested in person
-    laser_model_type: "likelihood_field" # can be changed to likelihood_field_prob
+    laser_model_type: "likelihood_field_prob" # can be changed to likelihood_field_prob
     max_beams: 60
     max_particles: 2000
     min_particles: 500
@@ -31,12 +31,12 @@ amcl:
     save_pose_rate: 0.5 # default 0.5, increased to 0.6 for potentially better pose estimation
     sigma_hit: 0.2
     tf_broadcast: true
-    transform_tolerance: 1.0 #May need to increase this value to 1.1-1.2 if network is slow
+    transform_tolerance: 1.2 #May need to increase this value to 1.1-1.2 if network is slow
     update_min_a: 0.2 # default 0.2, decreased to 0.01 for better sensitivity in slow robots
     update_min_d: 0.25 # default 0.25, decreased to 0.01 for better sensitivity in slow robots
     z_hit: 0.5
     z_max: 0.05
-    z_rand: 0.5 #default 0.5, decreased to 0.3 for improving sensor-map reliability
+    z_rand: 0.3 #default 0.5, decreased to 0.3 for improving sensor-map reliability
     z_short: 0.05 # might need to decrease this to 0.01 for lesser accounting for small obstacles
     scan_topic: scan
 
@@ -55,7 +55,7 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: /odom
     default_bt_xml_filename: "navigate_w_replanning_and_recovery.xml"
-    bt_loop_duration: 10 # can decrease this for frequent decision making
+    bt_loop_duration: 5 # can decrease this for frequent decision making
     default_server_timeout: 20 # default 20, increased to 40 for better slow response tolerance
     enable_groot_monitoring: True #doesnt work for some reason but not important
     groot_zmq_publisher_port: 1666
@@ -100,11 +100,32 @@ bt_navigator_rclcpp_node:
 controller_server:
   ros__parameters:
     controller_frequency: 30.0  #might need to increase slightly for faster control
+    use_sim_time: False
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.001
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    # Progress checker parameters
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+
+    general_goal_checker:
+      stateful: True
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.15 #0.3-0.25 worked for test
+      yaw_goal_tolerance: 1.0
+
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 56
       model_dt: 0.05
-      batch_size: 2000
+      batch_size: 5000 #2000 default
       vx_std: 0.2
       vy_std: 0.2
       wz_std: 0.4
@@ -199,12 +220,12 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.2 #robot radius from lidar centre to back of funnel
+      robot_radius: 0.23 #robot radius from lidar centre to back of funnel
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.2 #change this depending on how far robot stops from wall
-        cost_scaling_factor: 2.00 #can increase this to 3.0 for more damaging wall cost
+        inflation_radius: 0.215 #change this depending on how far robot stops from wall
+        cost_scaling_factor: 2.58 #can increase this to 3.0 for more damaging wall cost
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -248,13 +269,14 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0 #can change this to 3.0
-      publish_frequency: 1.0 #can change this to 3.0
+      update_frequency: 5.0 #can change this to 3.0
+      publish_frequency: 5.0 #can change this to 3.0
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: True
-      robot_radius: 0.2
+      robot_radius: 0.23
       resolution: 0.05
+      lethal_cost_threshold: 100
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "voxel_layer", "inflation_layer"]
       obstacle_layer:
@@ -296,8 +318,8 @@ global_costmap:
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.00
-        inflation_radius: 0.2
+        cost_scaling_factor: 2.58
+        inflation_radius: 0.215 #0.215-0.225 looks good in test
       always_send_full_costmap: True
   global_costmap_client:
     ros__parameters:
@@ -322,6 +344,7 @@ map_saver:
 planner_server:
   ros__parameters:
     expected_planner_frequency: 20.0
+    action_server_result_timeout: 10.0
     use_sim_time: False
     planner_plugins: ["GridBased"]
     GridBased:
@@ -368,3 +391,18 @@ waypoint_follower:
       plugin: "nav2_waypoint_follower::WaitAtWaypoint"
       enabled: True
       waypoint_pause_duration: 200
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: True
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.26, 0.0, 1.0]
+    min_velocity: [-0.26, 0.0, -1.0]
+    max_accel: [2.5, 0.0, 3.2]
+    max_decel: [-2.5, 0.0, -3.2]
+    odom_topic: "odom"
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
