@@ -27,7 +27,7 @@ import time
 
 # constants
 rotatechange = 0.5 #0.1
-speedchange = 0.2
+speedchange = 0.1
 occ_bins = [-1, 0, 100, 101]
 stop_distance = 0.4
 front_angle = 30
