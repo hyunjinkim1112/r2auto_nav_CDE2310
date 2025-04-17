@@ -182,6 +182,7 @@ class CoordinatorNode(Node):
                     self.navgoal_pub(heat_goal_point, self.current_pose)
                 else:
                     self.get_logger().warn("Heat source already detected in this direction.")
+                    start_frontier_navigation(self)
                     #stop_thermal(self)
 
         #elif msg.data == "HEAT_SOURCE_REACHED":
