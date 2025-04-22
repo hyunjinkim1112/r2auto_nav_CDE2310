@@ -1,5 +1,4 @@
-# CDE2310 Rescue Robot: The ZelephantBot
-Group 8<br/>
+# CDE2310 Group 8 Rescue Robot: The ZelephantBot
 Hyunjin Kim, Thia Yang Han, Mayukh Ghosh, Justin Matthew Tunaldi <br/>
 
 CDE2310 - Fundamentals of Systems Design, AY 24/25, <br/>
