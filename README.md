@@ -64,6 +64,7 @@ You may experiment with different parameters to calibrate the navigation algorit
 ### Software Installation and Operating Instructions
 Instructions on how to install, setup, and operate the necessary software used in our ZelephantBot can be found in our [Software Setup Manual](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/blob/main/Documentations/Software%20Setup%20Manual.pdf). Please note: These instructions are specifically intended for users running Ubuntu, either natively or through the Windows Subsystem for Linux (WSL), as our environment and tools are optimized for this setup. For any troubleshooting, please refer to the relevant section in our [report](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/blob/main/Documentations/Final%20Project%20Report.pdf) for more details. 
 
-
+### Additional Pictures of Final ZelephantBot
+![alt text](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/blob/main/Documentations/Mechanical_Files/image2.png) ![alt text](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/blob/main/Documentations/Mechanical_Files/image3.png)
 
 
