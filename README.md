@@ -10,10 +10,10 @@ Innovation and Design Programme, National University of Singapore (NUS). <br/>
 ## Description
 The ZelephantBot, developed by NUS IDP students from CDE2310, is a modified Turtlebot 3 originally provided by Robotis Co. Our modifications consist of adding a heat-detection and a flywheel ball launching system to accomplish the mission objectives which are: Autonomous navigation within a closed maze, locating three heat sources (humans), and launching ping-pong balls vertically upwards in a pre-programmed sequence. 
 
-This repository contains all the code that we have used for our Zelephant Bot in Ubuntu 22.04.5, ROS2 Humble and Python3 to explore a closed maze using a Naive Global Wavefront Frontier approach with Breadth-First Search. Do check out our project report under the [Documentations](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/tree/main/Documentations) folder for more details on how we have developed our ZelephantBot. There are 2 unresolved issues which you can check under Issues if you plan on developing our code for your application.
+This repository contains all the code that we have used for our ZelephantBot in Ubuntu 22.04.5, ROS2 Humble and Python3 to explore a closed maze using a Naive Global Wavefront Frontier approach with Breadth-First Search. Do check out our project report under the [Documentations](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/tree/main/Documentations) folder for more details on how we have developed our ZelephantBot. There are 2 unresolved issues which you can check under Issues if you plan on developing our code for your application.
 
 ## File Organisation
-- [Documentations](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/tree/main/Documentations) folder contains all the documentation we have made for the ZelephantBot. This includes the project report, assembly manual, full software setup guide, the end user documentation, CG derivation, and other relevant mechanical files and drawing.
+- [Documentations](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/tree/main/Documentations) folder contains all the documentation we have made for the ZelephantBot. This includes the project report (which contains the assembly manual and the troubleshooting guide), full software setup guide, the end user documentation, CG derivation, and other relevant mechanical files and drawing.
 - [laptop_programs](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/tree/main/laptop_programs) contains all the relevant files that need to be installed on the remote laptop for navigation and coordination. This includes the following files:
   - [coordinator_node.py](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/blob/main/laptop_programs/coordinator_node.py) is the main program enabling coordination between all the other Remote Laptop and RPi programs. It also contains the code for seeking a heat source using Navigation 2. 
   - [automapper.cpp](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/tree/main/laptop_programs/frontier_exploration/auto_mapper/src) is our frontier-based exploration algorithm using Navigation 2.
@@ -58,4 +58,12 @@ You may experiment with different parameters to calibrate the navigation algorit
 | rotatechange | Angular speed | 0.3 |
 | temperature_capture_angle | Angle interval to record temperature | >= 6 |
 | heat_detected_threshold | Temperature at which a heat source will be considered detected | ~25.5 (depending on room temperature) |
+
+
+
+### Software Installation and Operating Instructions
+Instructions on how to install, setup, and operate the necessary software used in our ZelephantBot can be found in our [Software Setup Manual](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/blob/main/Documentations/Software%20Setup%20Manual.pdf). Please note: These instructions are specifically intended for users running Ubuntu, either natively or through the Windows Subsystem for Linux (WSL), as our environment and tools are optimized for this setup. For any troubleshooting, please refer to the relevant section in our report for more details. 
+
+
+
 
