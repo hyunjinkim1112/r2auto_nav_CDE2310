@@ -3,7 +3,7 @@ Hyunjin Kim, Thia Yang Han, Mayukh Ghosh, Justin Matthew Tunaldi <br/>
 
 CDE2310 - Fundamentals of Systems Design, AY 24/25, <br/>
 Innovation and Design Programme, National University of Singapore (NUS). <br/>
-![alt text](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/blob/main/Documentations/Mechanical_Files/image.png)
+![alt text](https://github.com/hyunjinkim1112/r2auto_nav_CDE2310/blob/main/Documentations/Mechanical_Files/Turtlebot_Visualisation.png)
 
 
 
